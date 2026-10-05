@@ -1,2 +1,277 @@
-"use client";import {useState} from "react";import {useRouter} from "next/navigation";import {AppShell} from "@/components/layout/app-shell";import {Button,Card} from "@/components/ui/primitives";
-export default function NewIncident(){const r=useRouter();const[loading,setLoading]=useState(false);const[title,setTitle]=useState("");return <AppShell title="Create incident"><div className="form-page"><div><h2>Declare an incident</h2><p>Document the signal clearly so responders can move quickly.</p></div><Card><form className="incident-form" onSubmit={e=>{e.preventDefault();setLoading(true);setTimeout(()=>r.push("/incidents/1042"),500)}}><label>Title<input required value={title} maxLength={120} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Checkout requests timing out"/><small>{title.length}/120</small></label><label>Description<textarea required maxLength={1000} placeholder="What is happening? Include observed impact and key context."/><small>0/1000</small></label><div className="form-two"><label>Severity<select defaultValue=""><option disabled value="">Select severity</option><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select></label><label>Service<select defaultValue=""><option disabled value="">Select service</option><option>Payments API</option><option>Identity</option><option>Event pipeline</option></select></label><label>Environment<select><option>Production</option><option>Staging</option></select></label><label>Assign to<select><option>Unassigned</option><option>Arin Shah</option><option>Maya Chen</option></select></label></div><div className="form-actions"><Button type="button" variant="ghost" onClick={()=>r.back()}>Cancel</Button><Button disabled={loading}>{loading?"Creating incident...":"Create incident"}</Button></div></form></Card></div></AppShell>}
+"use client";
+
+import {
+  FormEvent,
+  useState,
+} from "react";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import { AppShell } from "@/components/layout/app-shell";
+import {
+  Button,
+  Card,
+} from "@/components/ui/primitives";
+
+import { api } from "@/lib/api";
+import { getToken } from "@/lib/auth";
+
+import type {
+  IncidentSeverity,
+} from "@/lib/types";
+
+export default function NewIncidentPage() {
+  const router = useRouter();
+
+  const [title, setTitle] =
+    useState("");
+
+  const [description, setDescription] =
+    useState("");
+
+  const [severity, setSeverity] =
+    useState<IncidentSeverity>("MEDIUM");
+
+  const [service, setService] =
+    useState("");
+
+  const [environment, setEnvironment] =
+    useState("production");
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    setError("");
+
+    const token = getToken();
+
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!title.trim()) {
+      setError(
+        "Incident title is required.",
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const incident =
+        await api.createIncident(
+          token,
+          {
+            title: title.trim(),
+            severity,
+            description:
+              description.trim() ||
+              undefined,
+            service:
+              service.trim() ||
+              undefined,
+            environment:
+              environment.trim() ||
+              undefined,
+          },
+        );
+
+      /*
+       * IMPORTANT:
+       * Navigate using the ID returned by
+       * PostgreSQL/backend.
+       *
+       * Do not use a mock ID.
+       */
+      router.push(
+        `/incidents/${incident.id}`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to create incident.";
+
+      setError(message);
+
+      if (
+        message.includes("401") ||
+        message
+          .toLowerCase()
+          .includes("unauthorized")
+      ) {
+        router.replace("/login");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <AppShell
+      title="Create incident"
+      actions={
+        <Link
+          className="button button-secondary"
+          href="/incidents"
+        >
+          Cancel
+        </Link>
+      }
+    >
+      <div className="page-intro">
+        <div>
+          <h2>New incident</h2>
+
+          <p>
+            Create a production incident and
+            start coordinating the response.
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <form
+          className="auth-form"
+          onSubmit={handleSubmit}
+        >
+          {error && (
+            <div className="auth-error">
+              {error}
+            </div>
+          )}
+
+          <label>
+            Incident title
+
+            <input
+              value={title}
+              onChange={(event) =>
+                setTitle(event.target.value)
+              }
+              placeholder="API latency increased"
+              required
+            />
+          </label>
+
+          <label>
+            Severity
+
+            <select
+              value={severity}
+              onChange={(event) =>
+                setSeverity(
+                  event.target
+                    .value as IncidentSeverity,
+                )
+              }
+            >
+              <option value="LOW">
+                LOW
+              </option>
+
+              <option value="MEDIUM">
+                MEDIUM
+              </option>
+
+              <option value="HIGH">
+                HIGH
+              </option>
+
+              <option value="CRITICAL">
+                CRITICAL
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Service
+
+            <input
+              value={service}
+              onChange={(event) =>
+                setService(event.target.value)
+              }
+              placeholder="payments-api"
+            />
+          </label>
+
+          <label>
+            Environment
+
+            <select
+              value={environment}
+              onChange={(event) =>
+                setEnvironment(
+                  event.target.value,
+                )
+              }
+            >
+              <option value="production">
+                production
+              </option>
+
+              <option value="staging">
+                staging
+              </option>
+
+              <option value="development">
+                development
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Description
+
+            <textarea
+              value={description}
+              onChange={(event) =>
+                setDescription(
+                  event.target.value,
+                )
+              }
+              placeholder="Describe what happened, impact, symptoms, or relevant context..."
+              rows={7}
+            />
+          </label>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "flex-end",
+            }}
+          >
+            <Link
+              className="button button-secondary"
+              href="/incidents"
+            >
+              Cancel
+            </Link>
+
+            <Button
+              type="submit"
+              disabled={loading}
+            >
+              {loading
+                ? "Creating..."
+                : "Create incident"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </AppShell>
+  );
+}

@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { api, type IncidentDetail } from "@/lib/api";
-import { clearAuth, getToken } from "@/lib/auth";
-import type {
-  IncidentStatus,
-  TimelineEvent,
-  User,
-} from "@/lib/types";
 
 import {
   Avatar,
@@ -25,63 +24,77 @@ import {
   Timeline,
 } from "@/components/incidents/incident-ui";
 
-function makeUser(
-  id: number | null,
-  name: string,
-  role = "Incident participant",
-): User {
-  return {
-    id: id ?? name,
-    name,
-    email: "",
-    role,
-    initials: name
-      .split(" ")
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
-  };
-}
+import { api } from "@/lib/api";
+import { getToken, getUser } from "@/lib/auth";
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import {
+  useIncidentSocket,
+} from "@/hooks/useIncidentSocket";
 
-function timelineKind(eventType: string): TimelineEvent["kind"] {
-  switch (eventType) {
-    case "INCIDENT_CREATED":
-      return "alert";
-
-    case "ENGINEER_ASSIGNED":
-      return "assignment";
-
-    case "INCIDENT_UPDATED":
-      return "status";
-
-    default:
-      return "system";
-  }
-}
+import type {
+  Incident,
+  IncidentStatus,
+  TimelineEvent,
+  User,
+} from "@/lib/types";
 
 export default function IncidentRoom() {
-  const { id } = useParams<{ id: string }>();
+  const params =
+    useParams<{ id: string }>();
+
   const router = useRouter();
 
+  const incidentId = Number(params.id);
+
   const [incident, setIncident] =
-    useState<IncidentDetail | null>(null);
+    useState<Incident | null>(null);
+
+  const [timeline, setTimeline] =
+    useState<TimelineEvent[]>([]);
+
+  const [participants, setParticipants] =
+    useState<User[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   const [status, setStatus] =
     useState<IncidentStatus>("OPEN");
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [updatingStatus, setUpdatingStatus] =
+    useState(false);
+
+  const [update, setUpdate] =
+    useState("");
+
+  const [localUpdates, setLocalUpdates] =
+    useState<string[]>([]);
+
+  const {
+    events: socketEvents,
+    connected,
+  } = useIncidentSocket(
+    Number.isFinite(incidentId)
+      ? incidentId
+      : undefined,
+  );
+
+  const currentUser = getUser();
 
   useEffect(() => {
+    if (
+      !Number.isFinite(incidentId)
+    ) {
+      setError("Invalid incident ID.");
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
     async function loadIncident() {
       const token = getToken();
 
@@ -91,188 +104,292 @@ export default function IncidentRoom() {
       }
 
       try {
-        const data = await api.getIncident(token, Number(id));
+        setLoading(true);
+        setError("");
 
-        setIncident(data);
-        setStatus(data.status);
+        const [
+          incidentResult,
+          timelineResult,
+          assignmentsResult,
+        ] = await Promise.all([
+          api.getIncident(
+            token,
+            incidentId,
+          ),
+
+          api.getTimeline(
+            token,
+            incidentId,
+          ),
+
+          api.getAssignments(
+            token,
+            incidentId,
+          ),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setIncident(incidentResult);
+
+        setStatus(
+          incidentResult.status,
+        );
+
+        /*
+         * Normalize backend timeline into
+         * the UI TimelineEvent shape.
+         */
+        const normalizedTimeline =
+  timelineResult.map(
+    (item, index): TimelineEvent => ({
+      id: String(
+        item.id ??
+          `timeline-${index}`,
+      ),
+
+      time:
+        item.created_at ??
+        item.timestamp ??
+        "",
+
+      kind:
+        (item.kind ??
+          item.type ??
+          item.event_type ??
+          "system") as TimelineEvent["kind"],
+
+      title:
+        item.title ??
+        item.message ??
+        "Incident activity",
+
+      detail:
+        item.detail ??
+        item.message ??
+        "",
+    }),
+  );
+        /*
+         * Assignments can come back in different
+         * shapes depending on the backend layer.
+         */
+        const normalizedParticipants =
+          assignmentsResult
+            .map((item) => {
+              if (item.user) {
+                return {
+                  id: item.user.id,
+                  name: item.user.name,
+                  email: item.user.email,
+                  role: item.user.role,
+                };
+              }
+
+              if (
+                item.user_id &&
+                item.name &&
+                item.email
+              ) {
+                return {
+                  id: item.user_id,
+                  name: item.name,
+                  email: item.email,
+                  role:
+                    item.role ??
+                    "ENGINEER",
+                };
+              }
+
+              return null;
+            })
+            .filter(
+              (
+                item,
+              ): item is User =>
+                item !== null,
+            );
+
+        setParticipants(
+          normalizedParticipants,
+        );
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
         const message =
           err instanceof Error
             ? err.message
-            : "Failed to load incident.";
+            : "Unable to load incident.";
 
         setError(message);
 
         if (
-          message.toLowerCase().includes("unauthorized") ||
-          message.toLowerCase().includes("token")
+          message.includes("401") ||
+          message
+            .toLowerCase()
+            .includes("unauthorized")
         ) {
-          clearAuth();
           router.replace("/login");
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    if (id) {
-      loadIncident();
-    }
-  }, [id, router]);
+    loadIncident();
 
-  const timeline = useMemo<TimelineEvent[]>(() => {
+    return () => {
+      cancelled = true;
+    };
+  }, [incidentId, router]);
+
+  /*
+   * Merge server timeline + socket events.
+   */
+  const visibleTimeline =
+    useMemo(
+      () => [
+        ...timeline,
+        ...socketEvents,
+      ],
+      [timeline, socketEvents],
+    );
+
+  async function changeStatus(
+    nextStatus: IncidentStatus,
+  ) {
     if (!incident) {
-      return [];
-    }
-
-    return incident.timeline.map((event) => ({
-      id: String(event.id),
-      time: formatTime(event.created_at),
-      kind: timelineKind(event.event_type),
-      title: event.event_type
-        .replaceAll("_", " ")
-        .toLowerCase()
-        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-      detail: event.message,
-      actor: event.actor_name
-        ? makeUser(event.actor_id, event.actor_name)
-        : undefined,
-    }));
-  }, [incident]);
-
-  async function changeStatus(nextStatus: IncidentStatus) {
-    const token = getToken();
-
-    if (!token || !incident || saving) {
       return;
     }
 
-    setSaving(true);
-    setError("");
+    const token = getToken();
+
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
 
     try {
-      const updated = await api.updateIncident(
-        token,
-        incident.id,
-        {
-          status: nextStatus,
-        },
-      );
+      setUpdatingStatus(true);
 
-      setIncident((current) =>
-        current
-          ? {
-              ...current,
-              ...updated,
-            }
-          : current,
-      );
+      const updated =
+        await api.updateIncident(
+          token,
+          incident.id,
+          {
+            status: nextStatus,
+          },
+        );
 
+      setIncident(updated);
       setStatus(updated.status);
-
-      // Reload the complete incident so timeline/cache is fresh.
-      const fresh = await api.getIncident(
-        token,
-        incident.id,
-      );
-
-      setIncident(fresh);
-      setStatus(fresh.status);
     } catch (err) {
-      const message =
+      setError(
         err instanceof Error
           ? err.message
-          : "Failed to update incident.";
-
-      setError(message);
-      setStatus(incident.status);
+          : "Unable to update incident.",
+      );
     } finally {
-      setSaving(false);
+      setUpdatingStatus(false);
     }
+  }
+
+  function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    const value = update.trim();
+
+    if (!value) {
+      return;
+    }
+
+    setLocalUpdates((previous) => [
+      ...previous,
+      value,
+    ]);
+
+    setUpdate("");
   }
 
   if (loading) {
     return (
       <AppShell title="Incident">
-        <div className="empty-state">
-          <h3>Loading incident...</h3>
-          <p>Fetching incident data from IncidentFlow.</p>
-        </div>
+        <section className="card empty-state">
+          <h3>
+            Loading incident...
+          </h3>
+
+          <p>
+            Fetching incident data from
+            IncidentFlow.
+          </p>
+        </section>
       </AppShell>
     );
   }
 
-  if (error && !incident) {
+  if (error || !incident) {
     return (
       <AppShell title="Incident">
-        <div className="empty-state">
-          <h3>Unable to load incident</h3>
-          <p>{error}</p>
-          <Button onClick={() => router.push("/incidents")}>
+        <section className="card empty-state">
+          <h3>
+            Unable to load incident
+          </h3>
+
+          <p>
+            {error ||
+              "The incident does not exist."}
+          </p>
+
+          <Link
+            className="button button-primary"
+            href="/incidents"
+          >
             Back to incidents
-          </Button>
-        </div>
+          </Link>
+        </section>
       </AppShell>
     );
-  }
-
-  if (!incident) {
-    return null;
   }
 
   const commander =
-    incident.assignments.find(
-      (user) =>
-        user.role === "INCIDENT_COMMANDER" ||
-        user.role === "ADMIN",
-    ) ?? null;
+    incident.commander;
 
   const assignee =
-    incident.assignments.find(
-      (user) =>
-        user.role !== "INCIDENT_COMMANDER" &&
-        user.role !== "ADMIN",
-    ) ?? null;
-
-  const participants =
-    incident.assignments.length > 0
-      ? incident.assignments
-      : [
-          {
-            id: incident.created_by,
-            name: incident.creator_name ?? "Incident creator",
-            email: "",
-            role: "Engineer",
-            assigned_at: incident.created_at,
-          },
-        ];
-
-  const duration = Math.max(
-    0,
-    Math.floor(
-      (Date.now() -
-        new Date(incident.created_at).getTime()) /
-        60000,
-    ),
-  );
+    incident.assignee;
 
   return (
     <AppShell
       title={`INC-${incident.id}`}
       actions={
         <>
-          <Button variant="secondary">
-            Assign
-          </Button>
+          <Link
+            className="button button-secondary"
+            href="/incidents"
+          >
+            Back
+          </Link>
 
           <Button
-            onClick={() => changeStatus("RESOLVED")}
+            onClick={() =>
+              changeStatus("RESOLVED")
+            }
             disabled={
-              saving ||
-              incident.status === "RESOLVED"
+              updatingStatus ||
+              status === "RESOLVED"
             }
           >
-            {saving ? "Updating..." : "Resolve"}
+            {updatingStatus
+              ? "Updating..."
+              : "Resolve"}
           </Button>
         </>
       }
@@ -280,90 +397,160 @@ export default function IncidentRoom() {
       <div className="room-header">
         <div>
           <div className="room-badges">
-            <SeverityBadge severity={incident.severity} />
-            <StatusBadge status={status} />
+            <SeverityBadge
+              severity={
+                incident.severity
+              }
+            />
+
+            <StatusBadge
+              status={status}
+            />
           </div>
 
-          <h2>{incident.title}</h2>
+          <h2>
+            {incident.title}
+          </h2>
 
           <p>
-            Incident #{incident.id} · Open for{" "}
-            {duration < 60
-              ? `${duration}m`
-              : `${Math.floor(duration / 60)}h ${duration % 60}m`}
+            {incident.service ??
+              "Unknown service"}{" "}
+            ·{" "}
+            {incident.environment ??
+              "production"}
           </p>
         </div>
 
-        <select
-          value={status}
-          disabled={saving}
-          onChange={(event) =>
-            changeStatus(
-              event.target.value as IncidentStatus,
-            )
-          }
-          aria-label="Change incident status"
-        >
-          <option value="OPEN">OPEN</option>
-          <option value="ACKNOWLEDGED">
-            ACKNOWLEDGED
-          </option>
-          <option value="INVESTIGATING">
-            INVESTIGATING
-          </option>
-          <option value="MITIGATED">
-            MITIGATED
-          </option>
-          <option value="RESOLVED">
-            RESOLVED
-          </option>
-        </select>
+        <div>
+          <select
+            value={status}
+            disabled={updatingStatus}
+            onChange={(event) =>
+              changeStatus(
+                event.target
+                  .value as IncidentStatus,
+              )
+            }
+            aria-label="Change incident status"
+          >
+            <option value="OPEN">
+              OPEN
+            </option>
+
+            <option value="ACKNOWLEDGED">
+              ACKNOWLEDGED
+            </option>
+
+            <option value="INVESTIGATING">
+              INVESTIGATING
+            </option>
+
+            <option value="MITIGATED">
+              MITIGATED
+            </option>
+
+            <option value="RESOLVED">
+              RESOLVED
+            </option>
+          </select>
+
+          <div
+            style={{
+              marginTop: "8px",
+              fontSize: "12px",
+              opacity: 0.7,
+            }}
+          >
+            {connected
+              ? "● Live"
+              : "○ Connecting..."}
+          </div>
+        </div>
       </div>
 
-      <StatusFlow status={status} />
-
-      {error && (
-        <div className="empty-state">
-          <p>{error}</p>
-        </div>
-      )}
+      <StatusFlow
+        status={status}
+      />
 
       <div className="room-grid">
         <div>
           <Card className="timeline-card">
             <div className="section-header">
               <div>
-                <h2>Incident timeline</h2>
+                <h2>
+                  Incident timeline
+                </h2>
+
                 <p>
-                  Shared activity and operational context
+                  Shared activity and
+                  operational context
                 </p>
               </div>
             </div>
 
-            <Timeline events={timeline} />
+            {visibleTimeline.length >
+            0 ? (
+              <Timeline
+                events={
+                  visibleTimeline
+                }
+              />
+            ) : (
+              <div className="empty-state">
+                <p>
+                  No timeline activity yet.
+                </p>
+              </div>
+            )}
+
+            {localUpdates.map(
+              (item, index) => (
+                <div
+                  className="local-update"
+                  key={`${item}-${index}`}
+                >
+                  <b>
+                    Just now ·{" "}
+                    {currentUser?.name ??
+                      "You"}
+                  </b>
+
+                  <p>{item}</p>
+                </div>
+              ),
+            )}
 
             <form
               className="composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-              }}
+              onSubmit={
+                handleSubmit
+              }
             >
               <textarea
+                value={update}
+                onChange={(event) =>
+                  setUpdate(
+                    event.target.value,
+                  )
+                }
                 placeholder="Add an update..."
                 aria-label="Add an incident update"
-                disabled
               />
 
               <div>
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled
                 >
                   + Add event
                 </Button>
 
-                <Button type="submit" disabled>
+                <Button
+                  type="submit"
+                  disabled={
+                    !update.trim()
+                  }
+                >
                   Comment
                 </Button>
               </div>
@@ -373,97 +560,142 @@ export default function IncidentRoom() {
 
         <aside className="room-sidebar">
           <Card>
-            <h3>Incident information</h3>
+            <h3>
+              Incident information
+            </h3>
 
             <dl>
               <dt>Severity</dt>
+
               <dd>
                 <SeverityBadge
-                  severity={incident.severity}
+                  severity={
+                    incident.severity
+                  }
                 />
               </dd>
 
               <dt>Status</dt>
+
               <dd>
-                <StatusBadge status={status} />
+                <StatusBadge
+                  status={status}
+                />
               </dd>
 
-              <dt>Commander</dt>
-              <dd className="assignee">
-                {commander ? (
-                  <>
+              <dt>Service</dt>
+
+              <dd>
+                {incident.service ??
+                  "—"}
+              </dd>
+
+              <dt>Environment</dt>
+
+              <dd>
+                {incident.environment ??
+                  "—"}
+              </dd>
+
+              {commander && (
+                <>
+                  <dt>
+                    Commander
+                  </dt>
+
+                  <dd className="assignee">
                     <Avatar
-                      user={makeUser(
-                        commander.id,
-                        commander.name,
-                        commander.role,
-                      )}
+                      user={
+                        commander
+                      }
                       size="sm"
                     />
-                    {commander.name}
-                  </>
-                ) : (
-                  "Unassigned"
-                )}
-              </dd>
 
-              <dt>Primary responder</dt>
-              <dd className="assignee">
-                {assignee ? (
-                  <>
+                    {
+                      commander.name
+                    }
+                  </dd>
+                </>
+              )}
+
+              {assignee && (
+                <>
+                  <dt>
+                    Primary responder
+                  </dt>
+
+                  <dd className="assignee">
                     <Avatar
-                      user={makeUser(
-                        assignee.id,
-                        assignee.name,
-                        assignee.role,
-                      )}
+                      user={
+                        assignee
+                      }
                       size="sm"
                     />
-                    {assignee.name}
-                  </>
-                ) : (
-                  "Unassigned"
-                )}
-              </dd>
 
-              <dt>Created by</dt>
-              <dd>
-                {incident.creator_name ??
-                  `User #${incident.created_by}`}
-              </dd>
+                    {
+                      assignee.name
+                    }
+                  </dd>
+                </>
+              )}
 
-              <dt>Started</dt>
+              <dt>Created</dt>
+
               <dd>
                 {new Date(
                   incident.created_at,
+                ).toLocaleString()}
+              </dd>
+
+              <dt>Updated</dt>
+
+              <dd>
+                {new Date(
+                  incident.updated_at,
                 ).toLocaleString()}
               </dd>
             </dl>
           </Card>
 
           <Card>
-            <h3>Participants</h3>
+            <h3>
+              Participants
+            </h3>
 
-            <div className="participant-list">
-              {participants.map((user) => (
-                <div key={user.id}>
-                  <Avatar
-                    user={makeUser(
-                      user.id,
-                      user.name,
-                      user.role,
-                    )}
-                  />
+            {participants.length >
+            0 ? (
+              <div className="participant-list">
+                {participants.map(
+                  (user) => (
+                    <div
+                      key={String(
+                        user.id,
+                      )}
+                    >
+                      <Avatar
+                        user={user}
+                      />
 
-                  <div>
-                    <b>{user.name}</b>
-                    <small>{user.role}</small>
-                  </div>
+                      <div>
+                        <b>
+                          {user.name}
+                        </b>
 
-                  <span className="online" />
-                </div>
-              ))}
-            </div>
+                        <small>
+                          {user.role}
+                        </small>
+                      </div>
+
+                      <span className="online" />
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <p>
+                No responders assigned.
+              </p>
+            )}
           </Card>
         </aside>
       </div>

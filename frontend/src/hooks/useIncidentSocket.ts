@@ -1,61 +1,97 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
 import { io, Socket } from "socket.io-client";
+
 import type { TimelineEvent } from "@/lib/types";
 
 const WS_URL =
   process.env.NEXT_PUBLIC_WS_URL ??
   "http://localhost:3000/incidents";
 
-export function useIncidentSocket(incidentId?: number) {
+export function useIncidentSocket(
+  incidentId?: number,
+) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [connected, setConnected] = useState(false);
 
   const appendLocalEvent = useCallback(
     (event: TimelineEvent) => {
-      setEvents((old) => [...old, event]);
+      setEvents((previous) => [
+        ...previous,
+        event,
+      ]);
     },
     [],
   );
 
   useEffect(() => {
-    if (!incidentId) return;
+    if (!incidentId) {
+      return;
+    }
 
-    const socket: Socket = io(WS_URL, {
-      transports: ["websocket"],
-    });
+    let socket: Socket | null = null;
 
-    socket.on("connect", () => {
-      setConnected(true);
-
-      socket.emit("join-incident", {
-        incidentId,
+    try {
+      socket = io(WS_URL, {
+        transports: ["websocket"],
       });
-    });
 
-    socket.on("disconnect", () => {
+      socket.on("connect", () => {
+        setConnected(true);
+
+        socket?.emit("join-incident", {
+          incidentId,
+        });
+      });
+
+      socket.on("disconnect", () => {
+        setConnected(false);
+      });
+
+      socket.on("connect_error", () => {
+        setConnected(false);
+      });
+
+      socket.on(
+        "incident.updated",
+        (incident: {
+          id: number;
+          status?: string;
+          severity?: string;
+        }) => {
+          const event: TimelineEvent = {
+            id: `socket-${Date.now()}`,
+            time: new Date().toLocaleTimeString(),
+            kind: "status",
+            title: "Incident updated",
+            detail:
+              `Incident #${incident.id} was updated.`,
+          };
+
+          setEvents((previous) => [
+            ...previous,
+            event,
+          ]);
+        },
+      );
+    } catch {
       setConnected(false);
-    });
-
-    socket.on("incident.updated", (incident) => {
-      const event: TimelineEvent = {
-        id: `socket-${Date.now()}`,
-        time: new Date().toLocaleTimeString(),
-        kind: "status",
-        title: "Incident updated",
-        detail: `Incident #${incident.id} was updated.`,
-      };
-
-      setEvents((old) => [...old, event]);
-    });
+    }
 
     return () => {
-      socket.emit("leave-incident", {
-        incidentId,
-      });
+      if (socket) {
+        socket.emit("leave-incident", {
+          incidentId,
+        });
 
-      socket.disconnect();
+        socket.disconnect();
+      }
     };
   }, [incidentId]);
 

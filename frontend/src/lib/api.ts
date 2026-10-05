@@ -30,12 +30,21 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const message =
+    let message = `Request failed (${response.status})`;
+
+    if (
       typeof body === "object" &&
       body !== null &&
       "message" in body
-        ? String((body as { message: unknown }).message)
-        : `Request failed (${response.status})`;
+    ) {
+      const apiMessage = (body as { message: unknown }).message;
+
+      if (Array.isArray(apiMessage)) {
+        message = apiMessage.join(", ");
+      } else if (typeof apiMessage === "string") {
+        message = apiMessage;
+      }
+    }
 
     throw new Error(message);
   }
@@ -55,37 +64,47 @@ export interface AuthResponse {
   user: ApiUser;
 }
 
-export interface IncidentAssignment {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  assigned_at: string;
+export interface TimelineItem {
+  id?: number | string;
+  event_type?: string;
+  type?: string;
+  kind?: string;
+  message?: string;
+  detail?: string;
+  title?: string;
+  created_at?: string;
+  timestamp?: string;
+  actor_id?: number;
+  actor_name?: string;
+  metadata?: Record<string, unknown>;
 }
 
-export interface IncidentTimelineItem {
-  id: number;
-  event_type: string;
-  message: string;
-  created_at: string;
-  actor_id: number | null;
-  actor_name: string | null;
-}
-
-export interface IncidentDetail extends Incident {
-  creator_name?: string;
-  timeline: IncidentTimelineItem[];
-  assignments: IncidentAssignment[];
-}
-
-export interface IncidentListResponse {
-  data: Incident[];
-  page: number;
-  limit: number;
-  total: number;
+export interface AssignmentItem {
+  id?: number | string;
+  user_id?: number;
+  incident_id?: number;
+  name?: string;
+  email?: string;
+  role?: string;
+  user?: ApiUser;
 }
 
 export const api = {
+  // --------------------------------------------------
+  // HEALTH
+  // --------------------------------------------------
+
+  health: () =>
+    request<{
+      status: string;
+      service: string;
+      timestamp: string;
+    }>("/health"),
+
+  // --------------------------------------------------
+  // AUTH
+  // --------------------------------------------------
+
   register: (data: {
     name: string;
     email: string;
@@ -105,15 +124,19 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  // --------------------------------------------------
+  // INCIDENTS
+  // --------------------------------------------------
+
   getIncidents: (token: string) =>
-    request<IncidentListResponse>("/incidents", {
+    request<Incident[]>("/incidents", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     }),
 
   getIncident: (token: string, id: number) =>
-    request<IncidentDetail>(`/incidents/${id}`, {
+    request<Incident>(`/incidents/${id}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -124,6 +147,9 @@ export const api = {
     data: {
       title: string;
       severity: IncidentSeverity;
+      description?: string;
+      service?: string;
+      environment?: string;
     },
   ) =>
     request<Incident>("/incidents", {
@@ -149,5 +175,78 @@ export const api = {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(data),
+    }),
+
+  deleteIncident: (token: string, id: number) =>
+    request<void>(`/incidents/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  getTimeline: (token: string, id: number) =>
+    request<TimelineItem[]>(`/incidents/${id}/timeline`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  getAssignments: (token: string, id: number) =>
+    request<AssignmentItem[]>(`/incidents/${id}/assignments`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  assignIncident: (
+    token: string,
+    incidentId: number,
+    userId: number,
+  ) =>
+    request<unknown>(
+      `/incidents/${incidentId}/assign/${userId}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    ),
+
+  // --------------------------------------------------
+  // USERS
+  // --------------------------------------------------
+
+  getUsers: (token: string) =>
+    request<ApiUser[]>("/users", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  getUser: (token: string, id: number) =>
+    request<ApiUser>(`/users/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  // --------------------------------------------------
+  // TEAMS
+  // --------------------------------------------------
+
+  getTeams: (token: string) =>
+    request<unknown[]>("/teams", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+
+  getTeam: (token: string, id: number) =>
+    request<unknown>(`/teams/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     }),
 };
