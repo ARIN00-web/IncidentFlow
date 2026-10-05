@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -20,7 +21,9 @@ interface UserRow {
 @Injectable()
 export class AuthService {
   constructor(
+    @Inject(DatabaseService)
     private readonly db: DatabaseService,
+    @Inject(JwtService)
     private readonly jwt: JwtService,
   ) {}
 

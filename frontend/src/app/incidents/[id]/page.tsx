@@ -177,15 +177,17 @@ export default function IncidentRoom() {
          * shapes depending on the backend layer.
          */
         const normalizedParticipants =
-          assignmentsResult
-            .map((item) => {
+          assignmentsResult.flatMap(
+            (item): User[] => {
               if (item.user) {
-                return {
-                  id: item.user.id,
-                  name: item.user.name,
-                  email: item.user.email,
-                  role: item.user.role,
-                };
+                return [
+                  {
+                    id: item.user.id,
+                    name: item.user.name,
+                    email: item.user.email,
+                    role: item.user.role,
+                  },
+                ];
               }
 
               if (
@@ -193,24 +195,21 @@ export default function IncidentRoom() {
                 item.name &&
                 item.email
               ) {
-                return {
-                  id: item.user_id,
-                  name: item.name,
-                  email: item.email,
-                  role:
-                    item.role ??
-                    "ENGINEER",
-                };
+                return [
+                  {
+                    id: item.user_id,
+                    name: item.name,
+                    email: item.email,
+                    role:
+                      item.role ??
+                      "ENGINEER",
+                  },
+                ];
               }
 
-              return null;
-            })
-            .filter(
-              (
-                item,
-              ): item is User =>
-                item !== null,
-            );
+              return [];
+            },
+          );
 
         setParticipants(
           normalizedParticipants,

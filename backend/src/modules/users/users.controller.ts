@@ -5,7 +5,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  private readonly users: UsersService;
+
+  constructor(users: UsersService) {
+    this.users = users;
+  }
 
   @Get()
   findAll() {

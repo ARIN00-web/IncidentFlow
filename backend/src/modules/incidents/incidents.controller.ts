@@ -19,7 +19,11 @@ import { CurrentUser, AuthUser } from '../auth/decorators/current-user.decorator
 @Controller('incidents')
 @UseGuards(JwtAuthGuard)
 export class IncidentsController {
-  constructor(private readonly incidents: IncidentsService) {}
+  private readonly incidents: IncidentsService;
+
+  constructor(incidents: IncidentsService) {
+    this.incidents = incidents;
+  }
 
   @Post()
   create(

@@ -15,5 +15,6 @@ import { DatabaseService } from '../../infrastructure/database/database.service'
   ],
   controllers: [AuthController],
   providers: [AuthService, DatabaseService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

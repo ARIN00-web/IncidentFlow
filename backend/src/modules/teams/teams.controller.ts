@@ -15,7 +15,11 @@ import { CurrentUser, AuthUser } from '../auth/decorators/current-user.decorator
 @Controller('teams')
 @UseGuards(JwtAuthGuard)
 export class TeamsController {
-  constructor(private readonly teams: TeamsService) {}
+  private readonly teams: TeamsService;
+
+  constructor(teams: TeamsService) {
+    this.teams = teams;
+  }
 
   @Get()
   findAll() {

@@ -31,7 +31,7 @@ export default function IncidentsPage() {
 
       try {
         const response = await api.getIncidents(token);
-        setIncidents(response.data);
+        setIncidents(response);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to load incidents.";

@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Job, Worker } from 'bullmq';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 
@@ -8,7 +14,10 @@ export class NotificationWorkerService
   private readonly logger = new Logger(NotificationWorkerService.name);
   private worker?: Worker;
 
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    @Inject(RedisService)
+    private readonly redis: RedisService,
+  ) {}
 
   onModuleInit() {
     this.worker = new Worker(

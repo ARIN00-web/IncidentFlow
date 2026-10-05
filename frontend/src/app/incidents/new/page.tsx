@@ -143,7 +143,7 @@ export default function NewIncidentPage() {
 
       <Card>
         <form
-          className="auth-form"
+          className="incident-form"
           onSubmit={handleSubmit}
         >
           {error && (
@@ -152,108 +152,110 @@ export default function NewIncidentPage() {
             </div>
           )}
 
-          <label>
-            Incident title
+          <div className="incident-form-grid">
+            <div className="incident-form-main">
+              <label>
+                Incident title
 
-            <input
-              value={title}
-              onChange={(event) =>
-                setTitle(event.target.value)
-              }
-              placeholder="API latency increased"
-              required
-            />
-          </label>
+                <input
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="API latency increased"
+                  required
+                />
+              </label>
 
-          <label>
-            Severity
+              <div className="incident-form-row">
+                <label>
+                  Severity
 
-            <select
-              value={severity}
-              onChange={(event) =>
-                setSeverity(
-                  event.target
-                    .value as IncidentSeverity,
-                )
-              }
-            >
-              <option value="LOW">
-                LOW
-              </option>
+                  <select
+                    value={severity}
+                    onChange={(event) =>
+                      setSeverity(
+                        event.target
+                          .value as IncidentSeverity,
+                      )
+                    }
+                  >
+                    <option value="LOW">
+                      LOW
+                    </option>
 
-              <option value="MEDIUM">
-                MEDIUM
-              </option>
+                    <option value="MEDIUM">
+                      MEDIUM
+                    </option>
 
-              <option value="HIGH">
-                HIGH
-              </option>
+                    <option value="HIGH">
+                      HIGH
+                    </option>
 
-              <option value="CRITICAL">
-                CRITICAL
-              </option>
-            </select>
-          </label>
+                    <option value="CRITICAL">
+                      CRITICAL
+                    </option>
+                  </select>
+                </label>
 
-          <label>
-            Service
+                <label>
+                  Service
 
-            <input
-              value={service}
-              onChange={(event) =>
-                setService(event.target.value)
-              }
-              placeholder="payments-api"
-            />
-          </label>
+                  <input
+                    value={service}
+                    onChange={(event) =>
+                      setService(event.target.value)
+                    }
+                    placeholder="payments-api"
+                  />
+                </label>
 
-          <label>
-            Environment
+                <label>
+                  Environment
 
-            <select
-              value={environment}
-              onChange={(event) =>
-                setEnvironment(
-                  event.target.value,
-                )
-              }
-            >
-              <option value="production">
-                production
-              </option>
+                  <select
+                    value={environment}
+                    onChange={(event) =>
+                      setEnvironment(
+                        event.target.value,
+                      )
+                    }
+                  >
+                    <option value="production">
+                      production
+                    </option>
 
-              <option value="staging">
-                staging
-              </option>
+                    <option value="staging">
+                      staging
+                    </option>
 
-              <option value="development">
-                development
-              </option>
-            </select>
-          </label>
+                    <option value="development">
+                      development
+                    </option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
-          <label>
-            Description
+            <div className="incident-form-side">
+              <label>
+                Description
 
-            <textarea
-              value={description}
-              onChange={(event) =>
-                setDescription(
-                  event.target.value,
-                )
-              }
-              placeholder="Describe what happened, impact, symptoms, or relevant context..."
-              rows={7}
-            />
-          </label>
+                <textarea
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Describe what happened, impact, symptoms, or relevant context..."
+                  rows={7}
+                />
+              </label>
+            </div>
+          </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              justifyContent: "flex-end",
-            }}
-          >
+          <div className="incident-form-actions">
             <Link
               className="button button-secondary"
               href="/incidents"

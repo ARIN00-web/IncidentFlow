@@ -1,9 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '../../infrastructure/database/database.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly db: DatabaseService,
+  ) {}
 
   async findAll() {
     const result = await this.db.query(

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,7 +9,10 @@ import { CreateTeamDto } from './dto/create-team.dto';
 
 @Injectable()
 export class TeamsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly db: DatabaseService,
+  ) {}
 
   async findAll() {
     const result = await this.db.query(
