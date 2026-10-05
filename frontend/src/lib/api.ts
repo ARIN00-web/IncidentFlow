@@ -22,6 +22,7 @@ async function request<T>(
   const text = await response.text();
 
   let body: unknown = {};
+
   try {
     body = text ? JSON.parse(text) : {};
   } catch {
@@ -54,6 +55,36 @@ export interface AuthResponse {
   user: ApiUser;
 }
 
+export interface IncidentAssignment {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  assigned_at: string;
+}
+
+export interface IncidentTimelineItem {
+  id: number;
+  event_type: string;
+  message: string;
+  created_at: string;
+  actor_id: number | null;
+  actor_name: string | null;
+}
+
+export interface IncidentDetail extends Incident {
+  creator_name?: string;
+  timeline: IncidentTimelineItem[];
+  assignments: IncidentAssignment[];
+}
+
+export interface IncidentListResponse {
+  data: Incident[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
 export const api = {
   register: (data: {
     name: string;
@@ -75,14 +106,14 @@ export const api = {
     }),
 
   getIncidents: (token: string) =>
-    request<Incident[]>("/incidents", {
+    request<IncidentListResponse>("/incidents", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     }),
 
   getIncident: (token: string, id: number) =>
-    request<Incident>(`/incidents/${id}`, {
+    request<IncidentDetail>(`/incidents/${id}`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -107,9 +138,9 @@ export const api = {
     token: string,
     id: number,
     data: {
-      status?: IncidentStatus;
-      severity?: IncidentSeverity;
       title?: string;
+      severity?: IncidentSeverity;
+      status?: IncidentStatus;
     },
   ) =>
     request<Incident>(`/incidents/${id}`, {
