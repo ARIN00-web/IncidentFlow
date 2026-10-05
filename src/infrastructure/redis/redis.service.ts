@@ -2,24 +2,21 @@ import {
   Injectable,
   OnModuleDestroy,
 } from '@nestjs/common';
-
 import Redis from 'ioredis';
 
 @Injectable()
-export class RedisService
-  implements OnModuleDestroy {
-
-  private readonly redis: Redis;
+export class RedisService implements OnModuleDestroy {
+  readonly client: Redis;
 
   constructor() {
-    this.redis = new Redis(
-      process.env.REDIS_URL ??
-        'redis://localhost:6379',
+    this.client = new Redis(
+      process.env.REDIS_URL ?? 'redis://localhost:6379',
+      { maxRetriesPerRequest: 3 },
     );
   }
 
-  async get(key: string) {
-    return this.redis.get(key);
+  get(key: string) {
+    return this.client.get(key);
   }
 
   async set(
@@ -28,22 +25,34 @@ export class RedisService
     ttlSeconds?: number,
   ) {
     if (ttlSeconds) {
-      return this.redis.set(
-        key,
-        value,
-        'EX',
-        ttlSeconds,
-      );
+      return this.client.set(key, value, 'EX', ttlSeconds);
     }
-
-    return this.redis.set(key, value);
+    return this.client.set(key, value);
   }
 
-  async del(key: string) {
-    return this.redis.del(key);
+  del(key: string) {
+    return this.client.del(key);
+  }
+
+  ping() {
+    return this.client.ping();
+  }
+
+  async setIfAbsent(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ) {
+    return this.client.set(
+      key,
+      value,
+      'EX',
+      ttlSeconds,
+      'NX',
+    );
   }
 
   async onModuleDestroy() {
-    await this.redis.quit();
+    await this.client.quit();
   }
 }

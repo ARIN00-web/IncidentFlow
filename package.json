@@ -1,0 +1,43 @@
+{
+  "name": "incidentflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:dev": "tsx watch src/main.ts",
+    "start:worker": "tsx src/modules/notifications/notification.worker.ts",
+    "migration:run": "tsx scripts/migrate.ts",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/platform-socket.io": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/websockets": "^11.0.0",
+    "argon2": "^0.44.0",
+    "bullmq": "^5.58.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "dotenv": "^17.0.0",
+    "ioredis": "^5.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.2"
+  }
+}
